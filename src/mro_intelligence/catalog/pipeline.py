@@ -15,7 +15,7 @@ from mro_intelligence.catalog.dedup import MergePlan, propose_merges
 from mro_intelligence.catalog.normalize import normalize_item_master
 from mro_intelligence.catalog.segmentation import segment
 from mro_intelligence.core.tenancy import TenantContext
-from mro_intelligence.ingest.layout import load_template_for_layout
+from mro_intelligence.ingest.loader import load_bundle_extracts
 
 EXTRACTS = ("item_master", "order_lines", "inventory_monthly", "purchase_orders")
 
@@ -34,20 +34,7 @@ class CatalogOutputs:
 
 def load_extracts(bundle_root: Path, layout: str) -> dict[str, pd.DataFrame]:
     """Read one tenant's ERP extract bundle, reverse-mapped to canonical names."""
-    template = load_template_for_layout(layout)
-    erp_dir = bundle_root / "extracts"
-    extracts: dict[str, pd.DataFrame] = {}
-    for extract_name, spec in template.extracts.items():
-        if extract_name not in EXTRACTS:
-            continue
-        source_to_canonical = {src: canon for canon, src in spec.columns.items()}
-        frame = pd.read_csv(erp_dir / spec.file, dtype=str)
-        frame = frame.rename(columns=source_to_canonical)
-        for canon in spec.columns:
-            if canon not in frame.columns:
-                raise ValueError(f"{extract_name}: extract missing canonical column {canon}")
-        extracts[extract_name] = frame
-    return extracts
+    return load_bundle_extracts(bundle_root, layout, EXTRACTS)
 
 
 def run_catalog(
