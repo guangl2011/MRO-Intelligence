@@ -31,6 +31,11 @@ mro run-catalog --bundle data/synthetic --tenant demo --layout p21 \
 mro run-fitment --bundle data/synthetic --tenant demo --layout p21 \
   --catalog data/processed/demo/canonical_catalog.csv \
   --out data/processed --evaluate
+
+# 4. M3 demand stage: intermittent-demand forecasts, SKU health cards, and
+#    the long-tail WMAPE gate against the ERP-style baseline.
+mro run-demand --bundle data/synthetic --tenant demo --layout p21 \
+  --out data/processed --evaluate
 ```
 
 `--evaluate` scores each stage against the bundle's hidden ground truth
@@ -71,6 +76,35 @@ mro run-fitment --bundle data/synthetic --tenant demo --layout p21 \
   Safety-constrained parts (gas, A2L refrigerant, T&P relief, backflow) are
   flagged on their edges and always route to a technician; abstention is a
   reported outcome, never hidden.
+
+### Demand stage outputs
+
+- `demand_forecasts.csv` — one row per SKU: model choice (SBA for smooth/
+  erratic series, TSB for intermittent/lumpy), occurrence probability,
+  mean size, next-month point forecast, and the 5–95% quantile band of the
+  monthly demand distribution (composition of occurrence probability and
+  recent size history).
+- `sku_health_report.csv` — the SDD health card: SBC demand class, trailing
+  12-month demand, months of cover, dead-stock flag (zero sales for 12
+  months while still stocked), and stockout-risk tier (`high`/`medium`/`low`)
+  from the on-hand position vs the forecast quantiles.
+- `demand_metrics.csv` — held-out WMAPE (latest 3 months) against the
+  ERP-style baseline (flat trailing-12-month mean, no seasonality):
+
+  | Metric | Meaning | NSF gate |
+  |---|---|---|
+  | `improvement_longtail` | WMAPE improvement on the Z-quadrant (intermittent long tail) | ≥ 0.15 |
+  | `improvement` | WMAPE improvement over the whole catalog | informational |
+
+  The model multiplies the per-SKU intermittent rate (Croston/SBA/TSB
+  family) by a category-level month-of-year seasonal index — pooled across
+  a category's SKUs because a per-SKU index sees only ~2 samples per
+  calendar month. The baseline is the ERP-as-is flat rate: seasonality-blind
+  by construction, which is exactly the product claim.
+
+  The health card's point forecast is the un-seasonalized rate (deliberately
+  conservative for risk tiers); horizon forecasts used for the WMAPE gate
+  apply the seasonal index.
 
 ## Development
 
