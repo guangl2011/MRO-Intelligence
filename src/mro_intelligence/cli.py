@@ -12,6 +12,7 @@ import typer
 
 from mro_intelligence.catalog.evaluate import evaluate_dedup
 from mro_intelligence.catalog.pipeline import load_extracts, run_catalog, write_catalog
+from mro_intelligence.fitment.pipeline import load_fitment_extracts, run_fitment, write_fitment
 from mro_intelligence.synthetic.generate import generate_dataset
 
 app = typer.Typer(help="MRO-Intelligence MVP tooling.", no_args_is_help=True)
@@ -78,6 +79,76 @@ def run_catalog_command(
             f"precision={metrics['precision']:.3f} "
             f"recall={metrics['recall']:.3f} f1={metrics['f1']:.3f}"
         )
+
+
+@app.command("run-fitment")
+def run_fitment_command(
+    bundle: str = typer.Option(
+        ..., "--bundle", help="Synthetic bundle root (contains tenant dirs)."
+    ),
+    tenant_id: str = typer.Option(..., "--tenant", help="Tenant directory under the bundle root."),
+    layout: str = typer.Option(..., "--layout", help="ERP layout id (p21 | eclipse | infor)."),
+    catalog: str = typer.Option(..., "--catalog", help="Canonical catalog CSV from run-catalog."),
+    out: str = typer.Option(
+        "data/processed", "--out", help="Output directory for processed outputs."
+    ),
+    evaluate: bool = typer.Option(
+        False,
+        "--evaluate",
+        help="Score S1 acceptance metrics against held-out ground truth.",
+    ),
+) -> None:
+    """Run the M2 fitment stage: build the graph, optionally score NSF metrics."""
+    import pandas as pd
+
+    tenant_dir = Path(bundle) / tenant_id
+    extracts = load_fitment_extracts(tenant_dir, layout)
+    catalog_frame = pd.read_csv(catalog, dtype=str)
+    wrong_part_flags: pd.DataFrame | None = None
+    compatibility_truth: pd.DataFrame | None = None
+    sku_mapping: pd.DataFrame | None = None
+    if evaluate:
+        gt = tenant_dir / "ground_truth" / "work_orders.csv"
+        if not gt.exists():
+            typer.echo(f"no work-order ground truth at {gt}; skipping evaluation")
+        else:
+            wrong_part_flags = pd.read_csv(gt, dtype=str)
+            fit_truth = tenant_dir / "ground_truth" / "fitment.csv"
+            if fit_truth.exists():
+                compatibility_truth = pd.read_csv(fit_truth, dtype=str)
+            sku_truth = tenant_dir / "ground_truth" / "sku_mapping.csv"
+            if sku_truth.exists():
+                sku_mapping = pd.read_csv(sku_truth, dtype=str)
+    outputs = run_fitment(
+        extracts,
+        catalog_frame,
+        tenant_id=tenant_id,
+        wrong_part_flags=wrong_part_flags,
+        compatibility_truth=compatibility_truth,
+        sku_mapping=sku_mapping,
+    )
+    paths = write_fitment(outputs, Path(out))
+    n_inferred = sum(1 for e in outputs.edges if e.review_state == "inferred")
+    n_review = sum(1 for e in outputs.edges if e.review_state == "needs-review")
+    n_safety = sum(1 for e in outputs.edges if e.safety_class != "none")
+    typer.echo(
+        f"fitment: {len(outputs.edges)} edges "
+        f"({n_inferred} inferred, {n_review} review-only, {n_safety} safety-classified)"
+    )
+    typer.echo(f"wrote {paths['edges']}")
+    if outputs.metrics is not None:
+        m = outputs.metrics.to_row()
+        typer.echo(
+            "fitment vs held-out truth: "
+            f"top3_compatibility={m['top3_compatibility']} "
+            f"part_top3_recall={m['part_top3_recall']} "
+            f"repair_top3={m['repair_top3']} "
+            f"kit_coverage={m['kit_coverage_full']} "
+            f"(baseline {m['kit_coverage_oem_only']}, "
+            f"uplift {m['kit_uplift']}) "
+            f"unsafe={m['unsafe_exposure']} abstention={m['abstention_rate']}"
+        )
+        typer.echo(f"wrote {paths['metrics']}")
 
 
 def main() -> None:

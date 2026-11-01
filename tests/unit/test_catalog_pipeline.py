@@ -83,6 +83,22 @@ def test_load_extracts_preserves_all_tenants_rows(tiny_bundle: Path) -> None:
     assert len(extracts["order_lines"]) == len(raw_orders)
 
 
+def test_load_extracts_translates_display_dates_to_iso(tiny_bundle: Path) -> None:
+    """P21 writes MM/DD/YYYY; downstream month keys need canonical ISO dates.
+
+    Regression: without this translation, segmentation sliced month keys
+    from display strings and every order landed in one bucket.
+    """
+    extracts = load_extracts(tiny_bundle, "p21")
+    dates = extracts["order_lines"]["order_date"]
+    assert dates.str.match(r"^\d{4}-\d{2}-\d{2}").all()
+    # The raw extract is in the display format, so equality implies conversion.
+    raw = pd.read_csv(tiny_bundle / "extracts" / "P21_ORDER_LINES.csv", dtype=str)
+    raw_dates = raw["ORD_DT"].str.strip()
+    converted = pd.to_datetime(raw_dates, format="%m/%d/%Y").dt.strftime("%Y-%m-%d")
+    assert list(dates) == list(converted)
+
+
 def test_run_catalog_rejects_invalid_tenant_id(tiny_bundle: Path) -> None:
     extracts = load_extracts(tiny_bundle, "p21")
     with pytest.raises(ValueError, match="invalid tenant id"):
