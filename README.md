@@ -1,9 +1,11 @@
 # MRO-Intelligence
 
 Read-only intelligence layer over mid-size distributor ERPs: Catalog
-Intelligence (M1), a Fitment & Substitution Graph (M2), and Long-tail Demand
-Sensing (M3). Full architecture and partner-diagnostic documentation ship with
-the MVP's final PR; today this file tracks setup and the stages that exist.
+Intelligence (M1), a Fitment & Substitution Graph (M2), Long-tail Demand
+Sensing (M3), and the partner ROI simulator that turns their outputs into a
+signed baseline report. Full architecture and partner-diagnostic
+documentation ship with the MVP's final PR; today this file tracks setup and
+the stages that exist.
 
 ## Setup
 
@@ -36,6 +38,12 @@ mro run-fitment --bundle data/synthetic --tenant demo --layout p21 \
 #    the long-tail WMAPE gate against the ERP-style baseline.
 mro run-demand --bundle data/synthetic --tenant demo --layout p21 \
   --out data/processed --evaluate
+
+# 5. ROI stage: replay a target inventory policy against the ERP's recorded
+#    outcomes, sweep the inventory-vs-fill-rate frontier, and emit the tiered
+#    ROI baseline report (SDD Step 5).
+mro run-roi --bundle data/synthetic --tenant demo --layout p21 \
+  --out data/processed
 ```
 
 `--evaluate` scores each stage against the bundle's hidden ground truth
@@ -106,10 +114,40 @@ mro run-demand --bundle data/synthetic --tenant demo --layout p21 \
   conservative for risk tiers); horizon forecasts used for the WMAPE gate
   apply the seasonal index.
 
+### ROI stage outputs
+
+The ROI stage reads the demand stage's `sku_health_report.csv` plus the raw
+extracts and answers the SDD's signature question: *what would have happened
+if the distributor had run this inventory policy for the last 12 months?*
+Every number is a counterfactual replay with recorded basis — never a
+vendor-asserted ROI.
+
+- `roi_baseline_report.csv` — the seven AXON benefit categories plus the
+  one-time dead-stock cash release, each row carrying its basis string and
+  source columns, priced at three tiers (conservative 0.6x / baseline 0.8x /
+  aggressive 1.0x of each driver). The carrying row is **net**: it credits
+  overstock reduction and debits stock built for stockout-risk SKUs, so it
+  can be negative — the report shows the tradeoff, not a sales pitch.
+- `inventory_frontier.csv` — average inventory value and fill rate for each
+  target-cover setting (0.5–4 months); the operating point sits at 90% of
+  the frontier's best fill rate.
+- `counterfactual_simulation.csv` — per treated SKU: ERP-recorded vs policy
+  sold/lost units, recovered margin, fill-rate gain, and inventory change,
+  with a bootstrap 90% interval on aggregate recovered margin (2,000
+  resamples, fixed seed).
+
+Treatment assignment follows the health card: dead-stock and high-risk SKUs
+and B-class over-cover (≥ 6 months) are treated; A/B-class healthy SKUs are
+controls. Lead times come from the median PO lag (order → receipt); unknown
+leads default to one month.
+
 ## Development
 
 ```bash
 make check   # ruff format + ruff + mypy + unit tests
 ```
 
-CI runs the same gate on every PR.
+CI runs the same gate on every PR. The testing strategy — unit layers,
+synthetic-data integration, the NSF metric harness, and the AXON-scale smoke
+run with acceptance criteria per PR — is documented in
+[docs/testing-plan.md](docs/testing-plan.md).
