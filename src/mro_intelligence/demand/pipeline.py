@@ -38,9 +38,10 @@ def forecast_horizon(
     horizon_months: list[str],
     categories_by_sku: dict[str, str],
     index: dict[tuple[str, int], float],
+    series: dict[str, np.ndarray] | None = None,
 ) -> pd.DataFrame:
     """Per-(sku, month) forecasts: model rate x category seasonal factor."""
-    forecasts = build_forecasts(train)
+    forecasts = build_forecasts(train, series)
     rates = dict(zip(forecasts["sku"].astype(str), forecasts["point_forecast"], strict=True))
     rows = []
     for month in horizon_months:
@@ -86,12 +87,12 @@ def _forecast_row(sku: str, values: np.ndarray) -> dict[str, float | str]:
     return row
 
 
-def build_forecasts(train: pd.DataFrame) -> pd.DataFrame:
+def build_forecasts(
+    train: pd.DataFrame, series: dict[str, np.ndarray] | None = None
+) -> pd.DataFrame:
     """Per-SKU next-month forecast from train-month demand vectors."""
-    rows = [
-        _forecast_row(str(sku), srs.series_for(train, str(sku)))
-        for sku in sorted(train["sku"].unique())
-    ]
+    vectors = srs.series_by_sku(train) if series is None else series
+    rows = [_forecast_row(sku, values) for sku, values in sorted(vectors.items())]
     return pd.DataFrame(rows)
 
 
@@ -154,7 +155,11 @@ def run_demand(
         demand = demand.merge(extracts["item_master"][["sku", "category"]], on="sku", how="left")
     train, eval_df = srs.horizon_split(demand)
 
-    forecasts = build_forecasts(train)
+    # One pass over the train frame feeds the forecaster, the horizon
+    # evaluator, and the baseline rows; recomputing per-SKU series per call
+    # is quadratic in tenant size.
+    series = srs.series_by_sku(train)
+    forecasts = build_forecasts(train, series)
     on_hand = srs.latest_on_hand(extracts["inventory_monthly"])
     health = build_health_report(train, forecasts, segmentation, on_hand)
 
@@ -166,15 +171,21 @@ def run_demand(
             else {}
         )
         index = category_seasonal_index(train)
-        model = forecast_horizon(train, sorted(eval_df["month"].unique()), categories_by_sku, index)
+        model = forecast_horizon(
+            train, sorted(eval_df["month"].unique()), categories_by_sku, index, series
+        )
+        horizon_months = sorted(eval_df["month"].unique())
+        # The ERP baseline rate is a flat trailing mean: month-invariant per
+        # SKU, so it is computed once and repeated across horizon months.
+        baseline_rate = {sku: models.moving_average(values) for sku, values in series.items()}
         baseline_rows = [
             {
                 "sku": sku,
                 "month": month,
-                "forecast": models.moving_average(srs.series_for(train, str(sku))),
+                "forecast": baseline_rate[sku],
             }
-            for sku in sorted(train["sku"].unique())
-            for month in sorted(eval_df["month"].unique())
+            for sku in sorted(baseline_rate)
+            for month in horizon_months
         ]
         metrics = evaluate_wmape(eval_df, model, pd.DataFrame(baseline_rows), segmentation)
     return DemandOutputs(

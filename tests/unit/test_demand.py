@@ -19,8 +19,26 @@ from mro_intelligence.demand.series import (
     horizon_split,
     latest_on_hand,
     monthly_demand,
+    series_by_sku,
+    series_for,
     stockout_risk,
 )
+
+
+def test_series_by_sku_matches_per_sku_series() -> None:
+    # One row per (sku, month): the groupby pass must return exactly what
+    # the per-SKU scan returns, for every SKU.
+    train = pd.DataFrame(
+        {
+            "sku": ["a", "a", "b", "b", "c"],
+            "month": ["2026-01", "2026-02", "2026-01", "2026-02", "2026-01"],
+            "qty": [1.0, 4.0, 2.0, 0.0, 7.0],
+        }
+    )
+    vectors = series_by_sku(train)
+    assert sorted(vectors) == ["a", "b", "c"]
+    for sku in ("a", "b", "c"):
+        assert (vectors[sku] == series_for(train, sku)).all()
 
 
 def test_croston_tracks_intermittent_series() -> None:
