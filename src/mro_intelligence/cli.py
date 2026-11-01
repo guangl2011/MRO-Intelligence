@@ -12,7 +12,9 @@ import typer
 
 from mro_intelligence.catalog.evaluate import evaluate_dedup
 from mro_intelligence.catalog.pipeline import load_extracts, run_catalog, write_catalog
+from mro_intelligence.demand.pipeline import run_demand, write_demand
 from mro_intelligence.fitment.pipeline import load_fitment_extracts, run_fitment, write_fitment
+from mro_intelligence.ingest.loader import load_bundle_extracts
 from mro_intelligence.synthetic.generate import generate_dataset
 
 app = typer.Typer(help="MRO-Intelligence MVP tooling.", no_args_is_help=True)
@@ -147,6 +149,58 @@ def run_fitment_command(
             f"(baseline {m['kit_coverage_oem_only']}, "
             f"uplift {m['kit_uplift']}) "
             f"unsafe={m['unsafe_exposure']} abstention={m['abstention_rate']}"
+        )
+        typer.echo(f"wrote {paths['metrics']}")
+
+
+@app.command("run-demand")
+def run_demand_command(
+    bundle: str = typer.Option(
+        ..., "--bundle", help="Synthetic bundle root (contains tenant dirs)."
+    ),
+    tenant_id: str = typer.Option(..., "--tenant", help="Tenant directory under the bundle root."),
+    layout: str = typer.Option(..., "--layout", help="ERP layout id (p21 | eclipse | infor)."),
+    out: str = typer.Option(
+        "data/processed", "--out", help="Output directory holding the catalog stage outputs."
+    ),
+    evaluate: bool = typer.Option(
+        False,
+        "--evaluate",
+        help="Score WMAPE vs the ERP baseline on the held-out months.",
+    ),
+) -> None:
+    """Run the M3 demand-sensing stage: forecasts, health cards, WMAPE."""
+    import pandas as pd
+
+    tenant_dir = Path(bundle) / tenant_id
+    extracts = load_bundle_extracts(
+        tenant_dir, layout, ("order_lines", "inventory_monthly", "item_master")
+    )
+    segmentation_path = Path(out) / tenant_id / "segmentation.csv"
+    if not segmentation_path.exists():
+        raise typer.BadParameter(
+            f"no segmentation at {segmentation_path}; run the catalog stage first"
+        )
+    segmentation = pd.read_csv(segmentation_path, dtype=str)
+    outputs = run_demand(extracts, segmentation, tenant_id=tenant_id, evaluate=evaluate)
+    paths = write_demand(outputs, Path(out))
+    n_dead = int(outputs.health_report["dead_stock"].sum())
+    n_risk = int((outputs.health_report["stockout_risk"] == "high").sum())
+    typer.echo(
+        f"demand: {len(outputs.forecasts)} SKU forecasts "
+        f"({n_dead} dead-stock, {n_risk} high stockout-risk)"
+    )
+    typer.echo(f"wrote {paths['health']}")
+    if outputs.metrics is not None:
+        typer.echo(
+            "demand vs held-out months: "
+            f"wmape_model={outputs.metrics.wmape_model:.3f} "
+            f"wmape_baseline={outputs.metrics.wmape_baseline:.3f} "
+            f"improvement={outputs.metrics.improvement:.3f} | long-tail "
+            f"model={outputs.metrics.wmape_model_longtail:.3f} "
+            f"baseline={outputs.metrics.wmape_baseline_longtail:.3f} "
+            f"improvement={outputs.metrics.improvement_longtail:.3f} "
+            f"(gate >= 0.15: {'PASS' if outputs.metrics.passes_gate() else 'FAIL'})"
         )
         typer.echo(f"wrote {paths['metrics']}")
 
