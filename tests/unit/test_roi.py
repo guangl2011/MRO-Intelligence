@@ -42,6 +42,44 @@ def test_inventory_walk_records_lost_sales_when_starved() -> None:
     assert result.fill_rate == pytest.approx(3.0 / 40.0)  # 3 sold of 40 demanded
 
 
+def test_protected_level_floors_lumpy_demand() -> None:
+    # Quiet history with two spikes: the trailing mean (~1.75/month) plans
+    # ~3.5 units at 2-month cover, but a lead+review quantile floor must
+    # reserve enough to serve the spikes. A constant series keeps the plain
+    # mean-cover target (the floor never binds).
+    lumpy = [1.0, 0.0, 1.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 9.0, 0.0, 1.0]
+    level = simulate.protected_level(2.0, simulate.trailing_rate(lumpy), 1, lumpy)
+    assert level > 2.0 * simulate.trailing_rate(lumpy)
+    steady = [10.0] * 12
+    assert simulate.protected_level(2.0, 10.0, 1, steady) == pytest.approx(20.0)
+
+
+def test_protection_serves_lumpy_demand_the_mean_starves() -> None:
+    # The replay's sizing rule: same walk, same cover, but the rate carries
+    # the quantile floor. The lumpy demand must sell through instead of
+    # being lost the way a trailing-mean policy loses it.
+    history = [1.0, 0.0, 1.0, 0.0, 10.0, 0.0, 1.0, 0.0, 0.0, 9.0, 0.0, 1.0]
+    demand_window = [9.0, 0.0, 10.0, 0.0]
+
+    def plain_rate(_idx: int) -> float:
+        return simulate.trailing_rate(history)
+
+    def protected_rate(idx: int) -> float:
+        # Mirrors the pipeline's rate_fn: level / cover, history-only inputs.
+        past = history + demand_window[:idx]
+        level = simulate.protected_level(2.0, simulate.trailing_rate(past), 1, history)
+        return level / 2.0
+
+    starved = simulate.inventory_walk(
+        demand_window, start_on_hand=2.0, target_cover=2.0, rate_fn=plain_rate, lead_months=1
+    )
+    protected = simulate.inventory_walk(
+        demand_window, start_on_hand=2.0, target_cover=2.0, rate_fn=protected_rate, lead_months=1
+    )
+    assert sum(protected.lost) < sum(starved.lost)
+    assert sum(protected.sales) > sum(starved.sales)
+
+
 def test_assign_groups_treats_dead_high_risk_and_overcover() -> None:
     health = pd.DataFrame(
         {
@@ -121,6 +159,23 @@ def test_frontier_inventory_monotone_in_target_cover() -> None:
     point = ftr.operating_point(front)
     assert point is not None
     assert point.fill_rate >= ftr.OPERATING_BAND * front["fill_rate"].max()
+
+
+def test_operating_point_prefers_erp_matched_service() -> None:
+    front = pd.DataFrame(
+        {
+            "target_cover_months": [0.5, 1.0, 2.0],
+            "avg_inventory_value": [100.0, 200.0, 300.0],
+            "fill_rate": [0.50, 0.80, 0.90],
+        }
+    )
+    # The ERP records 0.79 fill: the recommendation is the cheapest point
+    # that matches today's service, not the frontier's own best fill.
+    point = ftr.operating_point(front, min_fill=0.79)
+    assert point is not None
+    assert point.target_cover == 1.0
+    # A bar no grid point can reach falls back to the best available.
+    assert ftr.operating_point(front, min_fill=0.95) is not None
 
 
 def _synthetic_extracts() -> dict[str, pd.DataFrame]:

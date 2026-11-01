@@ -253,11 +253,14 @@ def run_roi_command(
             for _, row in outputs.totals.iterrows()
         )
     )
-    operating = outputs.frontier.sort_values("fill_rate", ascending=False).iloc[0]
-    typer.echo(
-        f"frontier operating point: {operating['target_cover_months']} months cover, "
-        f"fill rate {operating['fill_rate']:.3f}"
-    )
+    point = outputs.operating_point
+    if point is not None:
+        typer.echo(
+            f"recommended operating point: {point.target_cover:g} months cover, "
+            f"fill rate {point.fill_rate:.3f}"
+        )
+    else:
+        typer.echo("recommended operating point: none — frontier produced no eligible row")
     typer.echo(f"wrote {paths['report']}")
     typer.echo(f"wrote {paths['frontier']}")
     typer.echo(f"wrote {paths['counterfactual']}")

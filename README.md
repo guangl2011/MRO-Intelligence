@@ -129,8 +129,11 @@ vendor-asserted ROI.
   overstock reduction and debits stock built for stockout-risk SKUs, so it
   can be negative — the report shows the tradeoff, not a sales pitch.
 - `inventory_frontier.csv` — average inventory value and fill rate for each
-  target-cover setting (0.5–4 months); the operating point sits at 90% of
-  the frontier's best fill rate.
+  target-cover setting (0.5–4 months). The recommended operating point is the
+  smallest-inventory sweep point that matches the ERP's own recorded fill
+  rate (a same-service, less-inventory claim); when no sweep point clears
+  that bar, it falls back to the smallest inventory within 98% of the
+  frontier's best fill.
 - `counterfactual_simulation.csv` — per treated SKU: ERP-recorded vs policy
   sold/lost units, recovered margin, fill-rate gain, and inventory change,
   with a bootstrap 90% interval on aggregate recovered margin (2,000

@@ -13,6 +13,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 MIN_REORDER = 0.5  # reorder only when the gap exceeds half a month of demand
+PROTECTION_MONTHS = 12  # recent window for the SKU's demand quantiles
+COVER_MIN, COVER_MAX = 0.5, 4.0  # frontier sweep bounds the level interpolates over
 
 
 @dataclass(frozen=True)
@@ -81,3 +83,63 @@ def trailing_rate(past: Sequence[float]) -> float:
     if not past:
         return 0.0
     return sum(past) / len(past)
+
+
+def _quantile(values: Sequence[float], q: float) -> float:
+    """Linearly interpolated quantile (numpy's default method)."""
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    pos = (len(ordered) - 1) * q
+    low = int(pos)
+    high = min(low + 1, len(ordered) - 1)
+    frac = pos - low
+    return ordered[low] * (1 - frac) + ordered[high] * frac
+
+
+def protected_level(
+    target_cover: float,
+    trailing: float,
+    lead_months: int,
+    recent: Sequence[float],
+) -> float:
+    """Order-up-to level: mean-cover target, floored by a demand quantile.
+
+    A trailing mean starves lumpy SKUs — the exact ERP failure the product
+    exists to fix — so the level never drops below a service quantile of
+    lead+review demand, interpolated between the recent 50th and 95th
+    percentile monthly demand as the cover knob widens. `recent` must be
+    pre-window history only (no leakage into the replayed months).
+    """
+    base = target_cover * trailing
+    if not recent:
+        return base
+    service_month = _quantile(recent[-PROTECTION_MONTHS:], 0.50) + (
+        _quantile(recent[-PROTECTION_MONTHS:], 0.95) - _quantile(recent[-PROTECTION_MONTHS:], 0.50)
+    ) * min(max((target_cover - COVER_MIN) / (COVER_MAX - COVER_MIN), 0.0), 1.0)
+    return max(base, (max(lead_months, 1) + 1) * service_month)
+
+
+def sizing_rate_fn(
+    full: Sequence[float], window_start: int, lead_months: int, target_cover: float
+) -> Callable[[int], float]:
+    """The replay's sizing rule as a walk rate function.
+
+    One sizing policy for both simulation paths: the counterfactual replay
+    and the frontier sweep share this, so the report's per-SKU rows and the
+    swept frontier can never disagree about what the policy does. The walk
+    multiplies the returned rate by target_cover, so the protected level is
+    divided back out; history ends at the window boundary (no leakage).
+    """
+    pre_window = full[:window_start]
+
+    def rate(idx: int) -> float:
+        level = protected_level(
+            target_cover,
+            trailing_rate(full[: window_start + idx]),
+            lead_months,
+            pre_window,
+        )
+        return level / target_cover
+
+    return rate

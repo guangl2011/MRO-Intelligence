@@ -33,6 +33,7 @@ class RoiOutputs:
     totals: pd.DataFrame
     frontier: pd.DataFrame
     counterfactual: pd.DataFrame
+    operating_point: ftr.FrontierPoint | None  # the recommended frontier row
 
 
 @dataclass(frozen=True)
@@ -94,17 +95,25 @@ def prepare_inputs(
     }
 
     # Lost and sold units inside the replay window, branch-summed per SKU.
+    # Inventory months arrive as full dates (YYYY-MM-DD) while demand months
+    # are YYYY-MM — normalize or the window filter silently matches nothing.
     window_months = set(months[window_start:])
     inv = extracts["inventory_monthly"].copy()
+    inv["month"] = inv["month"].astype(str).str.slice(0, 7)
     inv["units_lost"] = pd.to_numeric(inv["units_lost"], errors="coerce").fillna(0.0)
     inv["on_hand"] = pd.to_numeric(inv["on_hand"], errors="coerce").fillna(0.0)
     inv_window = inv[inv["month"].isin(window_months)]
     actual_lost = inv_window.groupby("sku")["units_lost"].sum().to_dict()
     sold = demand[demand["month"].isin(window_months)].groupby("sku")["qty"].sum().to_dict()
 
-    on_hand_by_sku: dict[str, list[float]] = {}
-    for sku, grp in inv_window.groupby("sku"):
-        on_hand_by_sku[str(sku)] = [float(o) for o in grp["on_hand"]]
+    # Network on-hand per SKU-month: snapshots carry one row per branch, so
+    # branch rows must be summed to match the policy's network-sized stock.
+    monthly_on_hand = (
+        inv_window.groupby(["sku", "month"], as_index=False)["on_hand"].sum().sort_values("month")
+    )
+    on_hand_by_sku = {
+        str(sku): [float(o) for o in grp["on_hand"]] for sku, grp in monthly_on_hand.groupby("sku")
+    }
 
     start_snap = inv[inv["month"] == months[window_start]]
     start_on_hand = start_snap.groupby("sku")["on_hand"].sum().to_dict()
@@ -139,9 +148,7 @@ def _replay_one(
     """
     full = inputs.demand_by_sku[sku]
     window = full[inputs.window_start :]
-
-    def rate_fn(idx: int) -> float:
-        return simulate.trailing_rate(full[: inputs.window_start + idx])
+    rate_fn = simulate.sizing_rate_fn(full, inputs.window_start, lead_months, target_cover)
 
     walk = simulate.inventory_walk(
         window,
@@ -267,8 +274,24 @@ def run_roi(
     inputs = prepare_inputs(extracts, health_report, params)
     lead = lead_time_months(extracts.get("purchase_orders"))
 
-    front = ftr.frontier(inputs.demand_by_sku, inputs.unit_cost, inputs.start_on_hand, lead)
-    point = ftr.operating_point(front)
+    front = ftr.frontier(
+        inputs.demand_by_sku,
+        inputs.unit_cost,
+        inputs.start_on_hand,
+        lead,
+        window_start=inputs.window_start,
+    )
+    # The bar the policy must clear is the service the distributor gets
+    # today: with the ERP's recorded fill as the anchor, the recommended
+    # operating point is a Pareto claim (same service, least inventory).
+    recorded_sold = sum(inputs.actual_sold.values())
+    recorded_lost = sum(inputs.actual_lost.values())
+    erp_fill = (
+        recorded_sold / (recorded_sold + recorded_lost)
+        if recorded_sold + recorded_lost > 0
+        else None
+    )
+    point = ftr.operating_point(front, min_fill=erp_fill)
     target_cover = point.target_cover if point is not None else 2.0
     counterfactual = run_counterfactual(
         inputs, groups, target_cover, lead, params.carrying_rate_annual
@@ -400,6 +423,7 @@ def run_roi(
         totals=report.totals(),
         frontier=front,
         counterfactual=counterfactual,
+        operating_point=point,
     )
 
 

@@ -34,8 +34,15 @@ def frontier(
     start_on_hand_by_sku: dict[str, float],
     lead_months: int,
     grid: Sequence[float] = FRONTIER_GRID_MONTHS,
+    window_start: int = 0,
 ) -> pd.DataFrame:
-    """Simulate each grid point; one row per (target_cover, inventory, fill)."""
+    """Simulate each grid point; one row per (target_cover, inventory, fill).
+
+    The walk replays the window months with the same protected sizing rule
+    as the counterfactual (shared `sizing_rate_fn`), grounded in pre-window
+    history — not a cold start from month zero, which would understate the
+    policy's service for reasons the ERP never faced.
+    """
     rows = []
     for target_cover in grid:
         inventory_total = 0.0
@@ -43,12 +50,9 @@ def frontier(
         skus = sorted(demand_by_sku)
         for sku in skus:
             series = demand_by_sku[sku]
-
-            def rate_fn(idx: int, series: list[float] = series) -> float:
-                return simulate.trailing_rate(series[:idx])
-
+            rate_fn = simulate.sizing_rate_fn(series, window_start, lead_months, target_cover)
             result = simulate.inventory_walk(
-                series,
+                series[window_start:],
                 start_on_hand=start_on_hand_by_sku.get(sku, 0.0),
                 target_cover=target_cover,
                 rate_fn=rate_fn,
@@ -73,13 +77,26 @@ def frontier(
     )
 
 
-def operating_point(frontier_df: pd.DataFrame) -> FrontierPoint | None:
-    """Smallest-inventory point whose fill rate stays in the operating band."""
+def operating_point(
+    frontier_df: pd.DataFrame, min_fill: float | None = None
+) -> FrontierPoint | None:
+    """Smallest-inventory point meeting the service bar.
+
+    With `min_fill` (the ERP's own recorded fill) the recommendation is a
+    Pareto claim — match the service the distributor gets today at the least
+    inventory the policy can hold. Without one, fall back to the smallest
+    inventory within OPERATING_BAND of the frontier's best fill.
+    """
     if frontier_df.empty:
         return None
     best_fill = float(frontier_df["fill_rate"].max())
-    band = best_fill * OPERATING_BAND
-    eligible = frontier_df[frontier_df["fill_rate"] >= band]
+    bar = best_fill * OPERATING_BAND if min_fill is None else min_fill
+    eligible = frontier_df[frontier_df["fill_rate"] >= bar]
+    if eligible.empty:
+        # No grid point matches today's service — the frontier cannot make
+        # the Pareto claim this sweep. Recommend the best the policy can do
+        # instead; the frontier table itself shows the service gap.
+        eligible = frontier_df[frontier_df["fill_rate"] >= best_fill * OPERATING_BAND]
     # Among in-band points prefer the smallest inventory; ties break to the
     # higher fill rate.
     eligible = eligible.sort_values(["avg_inventory_value", "fill_rate"], ascending=[True, False])
