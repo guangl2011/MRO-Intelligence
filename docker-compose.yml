@@ -1,0 +1,19 @@
+# Local development database for the tenant-isolation (RLS) test suite.
+# pgvector/pgvector:pg16 = PostgreSQL 16 + the pgvector extension.
+# Fully ephemeral (tmpfs): this instance is for tests only, never for data.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: mro
+      POSTGRES_PASSWORD: mro
+      POSTGRES_DB: mro
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mro -d mro"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
