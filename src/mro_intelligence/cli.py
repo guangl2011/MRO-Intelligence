@@ -205,6 +205,64 @@ def run_demand_command(
         typer.echo(f"wrote {paths['metrics']}")
 
 
+@app.command("run-roi")
+def run_roi_command(
+    bundle: str = typer.Option(
+        ..., "--bundle", help="Synthetic bundle root (contains tenant dirs)."
+    ),
+    tenant_id: str = typer.Option(..., "--tenant", help="Tenant directory under the bundle root."),
+    layout: str = typer.Option(..., "--layout", help="ERP layout id (p21 | eclipse | infor)."),
+    out: str = typer.Option(
+        "data/processed",
+        "--out",
+        help="Output directory holding the catalog and demand stage outputs.",
+    ),
+) -> None:
+    """Run the partner ROI simulator: counterfactuals, frontier, SDD report."""
+    import pandas as pd
+
+    from mro_intelligence.roi import run_roi, write_roi
+
+    tenant_dir = Path(bundle) / tenant_id
+    extracts = load_bundle_extracts(
+        tenant_dir,
+        layout,
+        ("order_lines", "inventory_monthly", "item_master", "purchase_orders", "returns"),
+    )
+    processed_dir = Path(out) / tenant_id
+    segmentation_path = processed_dir / "segmentation.csv"
+    health_path = processed_dir / "sku_health_report.csv"
+    missing = [p for p in (segmentation_path, health_path) if not p.exists()]
+    if missing:
+        raise typer.BadParameter(
+            f"missing stage outputs at {', '.join(str(m) for m in missing)}; "
+            "run the catalog and demand stages first"
+        )
+    health = pd.read_csv(health_path, dtype=str)
+    health["dead_stock"] = health["dead_stock"].str.lower().isin(("true", "1"))
+    catalog_path = processed_dir / "canonical_catalog.csv"
+    canonical = pd.read_csv(catalog_path, dtype=str) if catalog_path.exists() else None
+
+    outputs = run_roi(extracts, health, tenant_id=tenant_id, canonical_catalog=canonical)
+    paths = write_roi(outputs, Path(out))
+    typer.echo(
+        "roi: "
+        + " ".join(
+            f"{row['tier']}: annual=${row['annual_value_total']:,.0f}"
+            f" one-time=${row['one_time_value_total']:,.0f}"
+            for _, row in outputs.totals.iterrows()
+        )
+    )
+    operating = outputs.frontier.sort_values("fill_rate", ascending=False).iloc[0]
+    typer.echo(
+        f"frontier operating point: {operating['target_cover_months']} months cover, "
+        f"fill rate {operating['fill_rate']:.3f}"
+    )
+    typer.echo(f"wrote {paths['report']}")
+    typer.echo(f"wrote {paths['frontier']}")
+    typer.echo(f"wrote {paths['counterfactual']}")
+
+
 def main() -> None:
     app()
 
