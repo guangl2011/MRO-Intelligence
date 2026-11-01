@@ -1,0 +1,101 @@
+erp: infor_distribution
+date_format: "%Y-%m-%d %H:%M:%S"
+extracts:
+  item_master:
+    file: INFOR_ITEM_MASTER.txt
+    columns:
+      sku: ITM_ITEM
+      description: ITM_DESCRIPTION
+      brand: ITM_BRAND
+      manufacturer: ITM_MFR_NAME
+      manufacturer_part_number: ITM_MFR_PART
+      category: ITM_CLASS
+      subcategory: ITM_SUBCLASS
+      uom: ITM_UOM
+      pack_qty: ITM_PACK_QTY
+      unit_cost: ITM_STD_COST
+      list_price: ITM_LIST_PRICE
+      status: ITM_STATUS
+  order_lines:
+    file: INFOR_ORDER_LINES.txt
+    columns:
+      order_id: OOL_ORDER
+      line_id: OOL_LINE
+      order_date: OOL_ORDER_DT
+      branch_code: OOL_WHSE
+      customer_id: OOL_CUSTOMER
+      customer_segment: OOL_CUSTOMER_TYPE
+      sku: OOL_ITEM
+      qty: OOL_QTY
+      unit_price: OOL_PRICE
+      unit_cost: OOL_COST
+  inventory_monthly:
+    file: INFOR_INVENTORY.txt
+    columns:
+      month: INV_PERIOD
+      branch_code: INV_WHSE
+      sku: INV_ITEM
+      on_hand: INV_ON_HAND
+      units_lost: INV_LOST_SALES
+  purchase_orders:
+    file: INFOR_PO_RECEIPTS.txt
+    columns:
+      po_id: POR_ORDER
+      supplier_id: POR_VENDOR
+      sku: POR_ITEM
+      order_date: POR_ORDER_DT
+      receipt_date: POR_RECEIPT_DT
+      qty_ordered: POR_QTY_ORD
+      qty_received: POR_QTY_RCVD
+      unit_cost: POR_UNIT_COST
+  returns:
+    file: INFOR_RETURNS.txt
+    columns:
+      return_id: RTN_RMA
+      order_id: RTN_ORDER
+      sku: RTN_ITEM
+      return_date: RTN_DATE
+      qty: RTN_QTY
+      reason: RTN_REASON
+  work_orders:
+    file: INFOR_WORK_ORDERS.txt
+    columns:
+      wo_id: WO_NUMBER
+      equipment_model: WO_EQUIP_MODEL
+      model_id: WO_EQUIP_MODEL_ID
+      failure_reported: WO_PROBLEM
+      repair_action: WO_REPAIR
+      part_sku: WO_ITEM
+      confirmed_date: WO_COMPLETE_DT
+      technician_id: WO_TECH
+  oem_fitment_catalog:
+    file: INFOR_OEM_COMPAT.txt
+    columns:
+      evidence_id: EV_ID
+      equipment_make: EV_EQUIP_MAKE
+      equipment_model_no: EV_EQUIP_MODEL_NO
+      model_id: EV_EQUIP_MODEL_ID
+      failure_code: EV_FAILURE_CD
+      oem_part_number: EV_MFR_PART
+      note: EV_NOTE
+      source: EV_SOURCE
+  price_file:
+    file: INFOR_VENDOR_PRICE.txt
+    columns:
+      supplier_id: VP_VENDOR
+      supplier_part_number: VP_VENDOR_PART
+      oem_part_number: VP_MFR_PART
+      unit_cost: VP_UNIT_COST
+      lead_time_days: VP_LEAD_DAYS
+      discount_pct: VP_DISCOUNT
+  branches:
+    file: INFOR_WAREHOUSES.txt
+    columns:
+      branch_code: WHS_CODE
+      name: WHS_NAME
+      region: WHS_REGION
+  customers:
+    file: INFOR_CUSTOMERS.txt
+    columns:
+      customer_id: CUS_ID
+      segment: CUS_TYPE
