@@ -1,13 +1,36 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
-dist/
-build/
-*.egg-info/
-.pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+
+# Pipeline working data — never commit tenant or generated data
 data/
-*.db
+output/
+artifacts/
+*.parquet
+*.duckdb
+*.duckdb.wal
+
+# The committed sample outputs live under docs/sample_output/ and are
+# force-added explicitly; keep everything else out.
+!docs/sample_output/**
+
+# Environment / credentials
 .env
+*.pem
+*.key
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

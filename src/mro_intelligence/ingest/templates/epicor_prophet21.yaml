@@ -1,0 +1,101 @@
+erp: epicor_prophet21
+date_format: "%m/%d/%Y"
+extracts:
+  item_master:
+    file: P21_ITEM_MASTER.csv
+    columns:
+      sku: ITEM_ID
+      description: ITEM_DESC
+      brand: BRAND
+      manufacturer: MFR_NAME
+      manufacturer_part_number: MFR_PART_NO
+      category: PROD_CAT
+      subcategory: PROD_SUBCAT
+      uom: UOM
+      pack_qty: PACK_QTY
+      unit_cost: NET_COST
+      list_price: LIST_PRICE
+      status: STOCK_STAT
+  order_lines:
+    file: P21_ORDER_LINES.csv
+    columns:
+      order_id: ORD_HDR
+      line_id: ORD_LINE
+      order_date: ORD_DT
+      branch_code: WHSE
+      customer_id: CUST_ID
+      customer_segment: CUST_TYPE
+      sku: ITEM_ID
+      qty: QTY_ORD
+      unit_price: PRICE
+      unit_cost: COST
+  inventory_monthly:
+    file: P21_INV_SNAPSHOT.csv
+    columns:
+      month: SNAPSHOT_DT
+      branch_code: WHSE
+      sku: ITEM_ID
+      on_hand: ON_HAND_QTY
+      units_lost: LOST_SALES_QTY
+  purchase_orders:
+    file: P21_PO_RECEIPTS.csv
+    columns:
+      po_id: PO_NO
+      supplier_id: VEND_ID
+      sku: ITEM_ID
+      order_date: PO_DT
+      receipt_date: RECV_DT
+      qty_ordered: QTY_ORD
+      qty_received: QTY_RECD
+      unit_cost: UNIT_COST
+  returns:
+    file: P21_RETURNS.csv
+    columns:
+      return_id: RMA_NO
+      order_id: ORD_HDR
+      sku: ITEM_ID
+      return_date: RMA_DT
+      qty: QTY_RET
+      reason: REASON_CD
+  work_orders:
+    file: P21_WORK_ORDERS.csv
+    columns:
+      wo_id: WO_NO
+      equipment_model: EQUIP_MODEL
+      model_id: EQUIP_MODEL_ID
+      failure_reported: PROBLEM_DESC
+      repair_action: REPAIR_DESC
+      part_sku: ITEM_ID
+      confirmed_date: COMPLETE_DT
+      technician_id: TECH_ID
+  oem_fitment_catalog:
+    file: P21_OEM_COMPAT.csv
+    columns:
+      evidence_id: EV_ID
+      equipment_make: EQUIP_MAKE
+      equipment_model_no: EQUIP_MODEL_NO
+      model_id: EQUIP_MODEL_ID
+      failure_code: FAILURE_CD
+      oem_part_number: MFR_PART_NO
+      note: NOTE
+      source: SOURCE
+  price_file:
+    file: P21_VENDOR_PRICE.csv
+    columns:
+      supplier_id: VEND_ID
+      supplier_part_number: VEND_PART_NO
+      oem_part_number: MFR_PART_NO
+      unit_cost: UNIT_COST
+      lead_time_days: LEAD_DAYS
+      discount_pct: DISC_PCT
+  branches:
+    file: P21_WAREHOUSES.csv
+    columns:
+      branch_code: WHSE
+      name: WHSE_NAME
+      region: REGION
+  customers:
+    file: P21_CUSTOMERS.csv
+    columns:
+      customer_id: CUST_ID
+      segment: CUST_TYPE

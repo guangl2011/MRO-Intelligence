@@ -1,0 +1,101 @@
+erp: epicor_eclipse
+date_format: "%Y-%m-%d"
+extracts:
+  item_master:
+    file: ECL_item_master.csv
+    columns:
+      sku: item_id
+      description: item_desc
+      brand: brand
+      manufacturer: manufacturer
+      manufacturer_part_number: mfr_part
+      category: category
+      subcategory: subcategory
+      uom: uom
+      pack_qty: pack_qty
+      unit_cost: avg_cost
+      list_price: list_price
+      status: status
+  order_lines:
+    file: ECL_order_lines.csv
+    columns:
+      order_id: order_no
+      line_id: line_no
+      order_date: order_date
+      branch_code: branch_id
+      customer_id: customer_id
+      customer_segment: customer_type
+      sku: item_id
+      qty: qty
+      unit_price: price
+      unit_cost: cost
+  inventory_monthly:
+    file: ECL_inventory.csv
+    columns:
+      month: period
+      branch_code: branch_id
+      sku: item_id
+      on_hand: qty_on_hand
+      units_lost: qty_lost
+  purchase_orders:
+    file: ECL_po_receipts.csv
+    columns:
+      po_id: po_no
+      supplier_id: vendor_id
+      sku: item_id
+      order_date: po_date
+      receipt_date: receipt_date
+      qty_ordered: qty_ordered
+      qty_received: qty_received
+      unit_cost: unit_cost
+  returns:
+    file: ECL_returns.csv
+    columns:
+      return_id: rma_no
+      order_id: order_no
+      sku: item_id
+      return_date: rma_date
+      qty: qty_returned
+      reason: reason_code
+  work_orders:
+    file: ECL_work_orders.csv
+    columns:
+      wo_id: wo_no
+      equipment_model: equip_model
+      model_id: equip_model_id
+      failure_reported: problem_desc
+      repair_action: repair_desc
+      part_sku: item_id
+      confirmed_date: complete_date
+      technician_id: tech_id
+  oem_fitment_catalog:
+    file: ECL_oem_compat.csv
+    columns:
+      evidence_id: ev_id
+      equipment_make: equip_make
+      equipment_model_no: equip_model_no
+      model_id: equip_model_id
+      failure_code: failure_cd
+      oem_part_number: mfr_part
+      note: note
+      source: source
+  price_file:
+    file: ECL_vendor_price.csv
+    columns:
+      supplier_id: vendor_id
+      supplier_part_number: vendor_part
+      oem_part_number: mfr_part
+      unit_cost: unit_cost
+      lead_time_days: lead_days
+      discount_pct: discount_pct
+  branches:
+    file: ECL_branches.csv
+    columns:
+      branch_code: branch_id
+      name: branch_name
+      region: region
+  customers:
+    file: ECL_customers.csv
+    columns:
+      customer_id: customer_id
+      segment: customer_type
