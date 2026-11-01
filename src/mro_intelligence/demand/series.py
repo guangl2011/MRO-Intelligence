@@ -59,6 +59,21 @@ def series_for(train: pd.DataFrame, sku: str) -> np.ndarray:
     return one["qty"].to_numpy(dtype=float)
 
 
+def series_by_sku(train: pd.DataFrame) -> dict[str, np.ndarray]:
+    """Train-month demand vector for every SKU, in one pass.
+
+    Equivalent to calling series_for per SKU, but scans the frame once
+    instead of once per SKU — the per-SKU scan is what made large tenants
+    quadratic. `train` holds one row per (sku, month), so sorting by month
+    then grouping yields the same month-ordered vectors series_for returns.
+    """
+    ordered = train.sort_values("month")
+    return {
+        str(sku): group["qty"].to_numpy(dtype=float)
+        for sku, group in ordered.groupby("sku", sort=True)
+    }
+
+
 def latest_on_hand(inventory_monthly: pd.DataFrame) -> pd.DataFrame:
     """Network-wide on-hand per SKU from the latest snapshot month."""
     snap = inventory_monthly.copy()
